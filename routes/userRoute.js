@@ -27,9 +27,9 @@ import { addToWishlist, removeWishlistItem, wishlist } from "../controllers/wish
 import { addMoneyToWallet, getWallet, verifyPayment } from "../controllers/walletController.js";
 const router = express.Router();
 
-router.get("/home", verifyToken, userHome);
-router.get("/product-details/:id", verifyToken, getProductById);
-router.get("/product-page", verifyToken, productPage);
+router.get("/home",userHome);
+router.get("/product-details/:id",getProductById);
+router.get("/product-page",productPage);
 router.get("/all-products-for-search", verifyToken, allProductsForSearch);
 router.post("/add-to-cart", verifyToken, addToCart);
 router.get("/cart", verifyToken, cartItems);
