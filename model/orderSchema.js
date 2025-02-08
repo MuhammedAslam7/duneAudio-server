@@ -40,13 +40,16 @@ const orderSchema = mongoose.Schema(
         "Cancelled",
         "Return Requested",
         "Returned",
+        "Partially Returned",
+        "Partially Delivered",
+        "Partially Shipped"
       ],
       default: "Pending",
     },
     paymentStatus: {
       type: String,
       required: true,
-      enum: ["Pending", "Paid", "Failed"],
+      enum: ["Pending", "Paid", "Failed", "Partially Paid", "Partially Failed"],
       default: "Pending",
     },
     products: [

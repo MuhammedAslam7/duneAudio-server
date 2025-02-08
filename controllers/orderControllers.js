@@ -87,29 +87,6 @@ export const orderDetailsById = async (req, res) => {
       res.status(404).json({ message: "The Order is not exist" });
     }
 
-    const allPaid = await order.products.every(
-      (product) => product.itemPaymentStatus == "Paid"
-    );
-    if (allPaid) {
-      order.paymentStatus = "Paid";
-      await order.save();
-    }
-
-    const uniqueStatuses = [
-      ...new Set(order.products.map((product) => product.itemStatus)),
-    ];
-
-    for (let status of uniqueStatuses) {
-      const isCommon = order.products.every(
-        (product) => product.itemStatus == status
-      );
-      if (isCommon) {
-        order.orderStatus = status;
-        await order.save();
-        break;
-      }
-    }
-
     const productsWithVariants = await Promise.all(
       order.products.map(async (product) => {
         const fullProduct = await Product.findById(product.productId);
@@ -138,6 +115,8 @@ export const orderDetailsById = async (req, res) => {
       orderId: order._id,
       paymentMethod: order.paymentMethod,
       payableAmount: order.payableAmount,
+      paymentStatus: order.paymentStatus,
+      totalDiscount: order.totalDiscount,
       products: productsWithVariants,
       orderAt: order.orderAt,
       orderStatus: order.orderStatus,
@@ -193,16 +172,75 @@ export const updateOrderStatus = async (req, res) => {
 export const updateItemStatus = async (req, res) => {
   const { itemId, orderId, newStatus } = req.body;
 
-  console.log(newStatus);
-
   try {
     const updatedOne = await Order.findOneAndUpdate(
       { _id: orderId, "products._id": itemId },
-      { $set: { "products.$.itemStatus": newStatus } }
+      { $set: { "products.$.itemStatus": newStatus } },
+      { new: true }
     );
     if (!updateItemStatus) {
       return res.status(404).json({ mesage: "Order not found" });
     }
+    const order = await Order.findById(orderId);
+    const itemStatuses = order.products.map((p) => p.itemStatus);
+    let newOrderStatus = "Pending"; // Default
+
+    const hasPending = itemStatuses.includes("Pending");
+    const hasShipped = itemStatuses.includes("Shipped");
+    const hasDelivered = itemStatuses.includes("Delivered");
+    const hasCancelled = itemStatuses.includes("Cancelled");
+    const hasReturnRequested = itemStatuses.includes("Return Requested");
+    const hasReturned = itemStatuses.includes("Returned");
+    
+    if (itemStatuses.every((status) => status === "Delivered")) {
+      newOrderStatus = "Delivered";
+    }
+    
+    else if (itemStatuses.every((status) => status === "Cancelled")) {
+      newOrderStatus = "Cancelled";
+    }
+    
+    else if (itemStatuses.every((status) => status === "Returned")) {
+      newOrderStatus = "Returned";
+    }
+    
+    else if (hasDelivered) {
+      newOrderStatus = "Partially Delivered";
+    }
+    
+    else if (hasReturnRequested) {
+      newOrderStatus = "Return Requested";
+    }
+    
+    else if (hasReturned && hasDelivered) {
+      newOrderStatus = "Partially Returned";
+    }
+    
+    else if (hasCancelled && hasDelivered) {
+      newOrderStatus = "Delivered";
+    }
+    
+    else if (hasShipped && hasPending) {
+      newOrderStatus = "Partially Shipped";
+    }
+    else if (hasShipped && hasCancelled) {
+      newOrderStatus = "Partially Shipped";
+    }
+    
+    else if (itemStatuses.every((status) => status === "Shipped")) {
+      newOrderStatus = "Shipped";
+    }
+    
+    else if (hasPending) {
+      newOrderStatus = "Pending";
+    }
+    if (order.orderStatus !== newOrderStatus) {
+      await Order.updateOne(
+        { _id: orderId },
+        { $set: { orderStatus: newOrderStatus } }
+      );
+    }
+
     if (newStatus == "Cancelled") {
       const currentOrder = await Order.findById(orderId);
       const currentItem = currentOrder.products.id(itemId);
@@ -216,11 +254,40 @@ export const updateItemStatus = async (req, res) => {
       await currentProduct.save();
     }
     if (newStatus == "Delivered") {
-      await Order.findOneAndUpdate(
+      const updatedItemPayment = await Order.findOneAndUpdate(
         { _id: orderId, "products._id": itemId },
         { $set: { "products.$.itemPaymentStatus": "Paid" } },
         { new: true }
       );
+      console.log(updatedItemPayment)
+
+      const itemPaymentStatuses = updatedItemPayment.products.map(
+        (p) => p.itemPaymentStatus
+      );
+
+      console.log(itemPaymentStatuses)
+      let newPaymentStatus = "Pending";
+      if (itemPaymentStatuses.every((status) => status === "Paid")) {
+        newPaymentStatus = "Paid";
+      } else if (itemPaymentStatuses.every((status) => status === "Failed")) {
+        newPaymentStatus = "Failed";
+      } else if (
+        itemPaymentStatuses.includes("Pending") &&
+        itemPaymentStatuses.includes("Paid")
+      ) {
+        newPaymentStatus = "Partially Paid";
+      } else if (
+        itemPaymentStatuses.includes("Failed") &&
+        itemPaymentStatuses.includes("Pending")
+      ) {
+        newPaymentStatus = "Partially Failed";
+      } 
+      if (order.paymentStatus !== newPaymentStatus) {
+        await Order.updateOne(
+          { _id: orderId },
+          { $set: { paymentStatus: newPaymentStatus } }
+        );
+      }
     }
     res.status(200).json(updatedOne);
   } catch (error) {
@@ -936,21 +1003,22 @@ export const retryOrder = async (req, res) => {
         { new: true }
       );
 
-      const order = await Order.findById(orderId).populate("products.productId")
-
+      const order = await Order.findById(orderId).populate(
+        "products.productId"
+      );
 
       for (let item of order.products) {
         const { productId, variantId, quantity } = item;
-  
+
         const product = await Product.findOne({
           _id: productId,
           "variants._id": variantId,
         });
-  
+
         const variant = product.variants.find((variant) =>
           variant._id.equals(variantId)
         );
-  
+
         if (variant) {
           variant.stock = Math.max(0, variant.stock - quantity);
           await product.save();
@@ -1009,8 +1077,7 @@ export const retryRazorpayPayment = async (req, res) => {
       { new: true }
     );
 
-    const order = await Order.findById(orderId).populate("products.productId")
-
+    const order = await Order.findById(orderId).populate("products.productId");
 
     for (let item of order.products) {
       const { productId, variantId, quantity } = item;
@@ -1030,8 +1097,7 @@ export const retryRazorpayPayment = async (req, res) => {
       }
     }
 
-
-    res.status(200).json({message: "Order paid successfully"})
+    res.status(200).json({ message: "Order paid successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server Error" });
   }

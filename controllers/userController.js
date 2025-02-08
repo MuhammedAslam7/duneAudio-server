@@ -610,6 +610,7 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ message: "Current Password is Incorrect" });
     }
 
+    
     const hashedPassword = await bcryptjs.hash(newPassword, 10);
 
     user.password = hashedPassword;
