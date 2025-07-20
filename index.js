@@ -19,6 +19,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://www.duneaudio.shop",
+      "https://duneaudio.shop",
       "https://server.duneaudio.shop",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
