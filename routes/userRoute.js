@@ -30,12 +30,12 @@ const router = express.Router();
 router.get("/home",userHome);
 router.get("/product-details/:id",getProductById);
 router.get("/product-page",productPage);
-router.get("/all-products-for-search", verifyToken, allProductsForSearch);
+router.get("/all-products-for-search", allProductsForSearch);
 router.post("/add-to-cart", verifyToken, addToCart);
 router.get("/cart", verifyToken, cartItems);
 router.put("/update-quantity", verifyToken, updateCartQuantity);
 router.delete("/delete-cartitem", verifyToken, deleteCartItem);
-router.get("/category-brand", verifyToken, getBrandCategory);
+router.get("/category-brand", getBrandCategory);
 router.get("/items-for-search", verifyToken, productsForSearch);
 router.get("/verify-stock",verifyToken,  verifyStock)
 router.get("/checkout-page", verifyToken, checkoutPage)
